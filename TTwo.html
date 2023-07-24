@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Video Recording Example</title>
+    <style>
+      #cameraQuality {
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2 id="cameraQuality">Camera Quality is: 480x320, 30fps</h2>
+    <video id="video" autoplay width="320" height="240"></video>
+    <button id="recordBtn">Start Recording</button>
+    <div id="timer"></div>
+    <br>
+    <div>
+      <video id="preview" controls width="320" height="240"></video>
+      <div id="previewSize"></div>
+    </div>
+    <br>
+    <div>
+      <div id="compressedSize"></div>
+    </div>
+    <br>
+    <textarea id="compressedBase64Text" cols="50" rows="5" readonly></textarea>
+
+    <script>
+      let stream;
+      let mediaRecorder;
+      let chunks = [];
+      let isRecording = false;
+      let countdownInterval;
+
+      const videoElement = document.getElementById('video');
+      const recordButton = document.getElementById('recordBtn');
+      const timerElement = document.getElementById('timer');
+      const previewElement = document.getElementById('preview');
+      const previewSizeElement = document.getElementById('previewSize');
+      const compressedSizeElement = document.getElementById('compressedSize');
+      const compressedBase64Text = document.getElementById('compressedBase64Text');
+      const cameraQualityElement = document.getElementById('cameraQuality');
+
+      // Start video recording
+      recordButton.addEventListener('click', startVideoRecording);
+
+      function startVideoRecording() {
+        if (!isRecording) {
+          navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, frameRate: 15, } })
+            .then((mediaStream) => {
+              stream = mediaStream;
+              videoElement.srcObject = mediaStream; 
+
+              mediaRecorder = new MediaRecorder(mediaStream);
+              mediaRecorder.start();
+              isRecording = true;
+
+              let remainingSeconds = 50;
+              countdownInterval = setInterval(() => {
+                remainingSeconds--;
+                timerElement.textContent = `Recording... ${remainingSeconds}s`;
+
+                if (remainingSeconds === 0) {
+                  clearInterval(countdownInterval);
+                  mediaRecorder.stop();
+                  isRecording = false;
+                  recordButton.disabled = true;
+                  timerElement.textContent = '';
+                }
+              }, 1000);
+
+              mediaRecorder.ondataavailable = (event) => {
+                chunks.push(event.data);
+              };
+
+              mediaRecorder.onstop = async () => {
+                const videoBlob = new Blob(chunks);
+                previewElement.src = URL.createObjectURL(videoBlob);
+                chunks = [];
+
+                displayVideoSize(videoBlob, previewSizeElement);
+
+                const compressedVideoBlob = await compressVideo(videoBlob);
+                displayVideoSize(compressedVideoBlob, compressedSizeElement);
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64data = reader.result;
+                  const base64WithoutType = base64data.split(',')[1]; // Remove data type prefix
+                  //compressedBase64Text.value =`data:video/mp4;base64,${base64WithoutType}`;
+                  compressedBase64Text.value = base64WithoutType;
+                  console.log('Compressed Video Base64 Value:', base64WithoutType);
+                };
+                reader.readAsDataURL(compressedVideoBlob);
+              };
+            })
+            .catch((error) => {
+              console.error('Error accessing media devices.', error);
+            });
+        }
+      }
+
+      // Display video size
+      function displayVideoSize(videoBlob, element) {
+        const fileSizeMB = (videoBlob.size / 1024 / 1024).toFixed(2);
+        const fileSizeKB = Math.round(videoBlob.size / 1024);
+        element.textContent = `Video Size: ${fileSizeMB} MB (${fileSizeKB} KB)`;
+      }
+
+      async function compressVideo(videoBlob) {
+        const compressedBlob = await transcodeVideo(videoBlob);
+        return compressedBlob;
+      }
+
+      async function transcodeVideo(videoBlob) {
+        const transcoder = new VideoTranscoder();
+        const options = {
+          quality: 'low', // Set video quality to low
+        };
+        const compressedBlob = await transcoder.transcode(videoBlob, options);
+        return compressedBlob;
+      }
+
+      // Helper class for video transcoding (mock implementation)
+      class VideoTranscoder {
+        async transcode(videoBlob, options) {
+          // Simulating video transcoding process
+          await sleep(3000); // Simulate processing time
+          return videoBlob;
+        }
+      }
+
+      // Helper function for delaying execution
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+    </script>
+  </body>
+</html>
